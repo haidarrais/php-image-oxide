@@ -18,6 +18,9 @@ final class DaemonDriver implements Driver
     private const BASE_BACKOFF_MS = 50;
     private const MAX_BACKOFF_MS = 1000;
 
+    /** Keep-alive connection reused across `process()` calls (PHP-13 opt-out). */
+    private ?Connection $connection = null;
+
     public function __construct(
         private readonly ?string $socketPath = null,
     ) {
@@ -39,8 +42,15 @@ final class DaemonDriver implements Driver
             }
 
             try {
-                $reply = (new Connection($socket))->roundTrip($request);
+                $reply = $this->roundTrip($request, $socket);
             } catch (OxideException $e) {
+                // A retryable failure (e.g. DAEMON_OVERLOADED) usually means the
+                // daemon rejected AND closed the connection — drop the pooled
+                // stream so the retry reconnects instead of writing to a dead fd.
+                if ($e->isRetryable()) {
+                    $this->connection?->close();
+                    $this->connection = null;
+                }
                 if (!$e->isRetryable() || $attempt >= self::MAX_RETRIES) {
                     throw $e;
                 }
@@ -55,8 +65,21 @@ final class DaemonDriver implements Driver
                 width: (int) $reply['width'],
                 height: (int) $reply['height'],
                 bytes: (int) $reply['bytes'],
+                durationMs: isset($reply['duration_ms']) ? (int) $reply['duration_ms'] : null,
             );
         }
+    }
+
+    /**
+     * Send one request on the pooled connection (kept alive across calls).
+     * Reconnects transparently if the pooled stream died.
+     */
+    private function roundTrip(array $request, string $socket): array
+    {
+        if ($this->connection === null || !$this->connection->isOpen()) {
+            $this->connection = (new Connection($socket))->keepAlive();
+        }
+        return $this->connection->roundTrip($request);
     }
 
     public function capabilities(): Capabilities
@@ -68,6 +91,11 @@ final class DaemonDriver implements Driver
             fits: ['cover' => true, 'contain' => true, 'fill' => true],
             positions: ['center', 'top', 'top-left', 'top-right', 'bottom', 'bottom-left', 'bottom-right', 'left', 'right'],
         );
+    }
+
+    public function __destruct()
+    {
+        $this->connection?->close();
     }
 
     /**

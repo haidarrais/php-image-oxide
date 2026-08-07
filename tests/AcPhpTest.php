@@ -151,6 +151,25 @@ final class AcPhpTest extends TestCase
         self::assertSame('image/webp', $info['mime']);
     }
 
+    public function testAcPhp01DaemonSurfacesDurationMs(): void
+    {
+        $this->startDaemon();
+        $dir = self::tempDir();
+        $input = $dir . '/in.png';
+        self::writePng($input, 800, 600);
+        $out = $dir . '/out.jpg';
+
+        $result = (new DaemonDriver($this->socket()))->process(
+            $input,
+            [['type' => 'format', 'format' => 'jpeg']],
+            $out,
+            85,
+        );
+
+        self::assertNotNull($result->durationMs, 'daemon must report server-side work time');
+        self::assertGreaterThanOrEqual(0, $result->durationMs);
+    }
+
     public function testAcPhp01SameChainThroughGd(): void
     {
         $dir = self::tempDir();

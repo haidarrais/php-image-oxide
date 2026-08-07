@@ -43,6 +43,36 @@ Oxide::from('/in.png', socketPath: '/run/user/1000/image-oxide.sock')
 $caps = Oxide::capabilities();
 ```
 
+When you drive the daemon directly (not through the fluent `Oxide` API), the result
+carries the daemon's server-side work time:
+
+```php
+use ImageOxide\Driver\DaemonDriver;
+
+$r = (new DaemonDriver())->process($in, $ops, $out, 85);
+$workMs = $r->durationMs;   // null for the GD driver
+```
+
+`durationMs` is the daemon's `duration_ms` (pure work time, excluding client IPC
+round-trip). GD runs in-process, so its `durationMs` is `null`. Subtracting it from a
+wall-clock measurement isolates client→daemon IPC overhead.
+
+### Connection pooling
+
+By default each `to()` opens a fresh daemon connection (PHP-13). To reuse one
+connection across many operations — the daemon now serves sequential requests per
+connection (`ipc_23`) — keep a single driver instance alive; it pools the connection
+and reconnects transparently if the daemon restarts:
+
+```php
+$driver = new DaemonDriver();          // pooled connection inside
+$r1 = $driver->process($in1, $ops, $out1, 85);
+$r2 = $driver->process($in2, $ops, $out2, 85);   // reuses $r1's connection
+```
+
+Measurements show IPC is ~1–3 ms/op, so pooling's benefit is architectural (fewer
+syscalls, no per-op handshake) rather than a large latency win.
+
 ### Ops
 
 | Op | Signature | Notes |

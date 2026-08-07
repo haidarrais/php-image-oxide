@@ -57,6 +57,8 @@ final class GdDriver implements Driver
             width: $width,
             height: $height,
             bytes: (int) filesize($outputPath),
+            // In-process driver: no separate daemon work time to report.
+            durationMs: null,
         );
     }
 

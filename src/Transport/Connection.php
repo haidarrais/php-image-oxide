@@ -9,9 +9,12 @@ use ImageOxide\Exception\OxideException;
 use ImageOxide\Exception\ProtocolException;
 
 /**
- * A single daemon connection: hello/ack handshake then exactly one request
- * (IPC-06..09, IPC-19, IPC-23). A fresh connection is established per terminal
- * call (PHP-13). Paths are always absolute (PHP-14).
+ * A daemon connection: hello/ack handshake then one request in flight at a
+ * time (IPC-06..09, IPC-19, IPC-23). By default a fresh connection is
+ * established per terminal call (PHP-13); `keepAlive()` opts into reusing the
+ * stream across calls, so per-op latency stops being dominated by the
+ * handshake (the daemon already tolerates sequential requests on one
+ * connection). Paths are always absolute (PHP-14).
  */
 final class Connection
 {
@@ -23,6 +26,9 @@ final class Connection
 
     /** @var resource|null */
     private $stream = null;
+
+    /** When true, the stream survives `roundTrip()` and is reused. */
+    private bool $keepAlive = false;
 
     public function __construct(private readonly string $socketPath)
     {
@@ -43,20 +49,38 @@ final class Connection
     }
 
     /**
-     * Send a request and read the reply. Retries are the caller's job (IPC-22);
-     * this connection is single-shot and closed afterwards.
+     * Reuse this connection across `roundTrip()` calls instead of closing it
+     * after each one. The daemon tolerates sequential requests on one
+     * connection (IPC-23 is "one request in flight", not "one per connection").
+     * Call `close()` when done.
+     */
+    public function keepAlive(): self
+    {
+        $this->keepAlive = true;
+        return $this;
+    }
+
+    /**
+     * Send a request and read the reply. Retries are the caller's job (IPC-22).
+     * Single-shot unless `keepAlive()` was called (PHP-13).
      *
      * @return array{status: string, id: string, output_path?: string, bytes?: int, width?: int, height?: int, duration_ms?: int, error?: array{code: string, message: string, op_index: int|null}}
      */
     public function roundTrip(array $request): array
     {
-        $this->connect();
-        try {
+        // Reuse an open stream on keep-alive (handshake already done); a dead
+        // stream is transparently re-established.
+        if (!$this->keepAlive || !is_resource($this->stream)) {
+            $this->connect();
             $this->handshake();
+        }
+        try {
             $this->writeRequest($request);
             $reply = $this->readReply();
         } finally {
-            $this->close();
+            if (!$this->keepAlive) {
+                $this->close();
+            }
         }
 
         if (($reply['status'] ?? null) !== 'ok') {
@@ -144,11 +168,17 @@ final class Connection
         return $reply;
     }
 
-    private function close(): void
+    public function close(): void
     {
         if (is_resource($this->stream)) {
             fclose($this->stream);
         }
         $this->stream = null;
+        $this->keepAlive = false;
+    }
+
+    public function isOpen(): bool
+    {
+        return is_resource($this->stream);
     }
 }
