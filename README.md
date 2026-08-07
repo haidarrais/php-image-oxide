@@ -9,7 +9,7 @@ the daemon is not reachable.
 
 ## Requirements
 
-- PHP >= 8.1
+- PHP >= 8.2
 - Extensions: `gd`, `json`, `sockets`
 - Optional: the image-oxide daemon binary (for the faster, richer driver)
 
