@@ -4,7 +4,7 @@ PHP client for the [image-oxide](https://github.com/haidarrais/image-oxide) imag
 daemon. Speaks the 001 wire protocol over a Unix socket and degrades to a pure-GD driver when
 the daemon is not reachable.
 
-> Spec 004 of the image-oxide project. The Rust daemon and the wire protocol live in
+> The Rust daemon and the wire protocol live in
 > [haidarrais/image-oxide](https://github.com/haidarrais/image-oxide).
 
 ## Requirements

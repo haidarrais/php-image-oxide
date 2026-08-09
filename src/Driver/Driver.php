@@ -6,7 +6,8 @@ namespace ImageOxide\Driver;
 
 /**
  * A driver executes an op chain against one input file and writes the result.
- * The GD driver must match 003's pixel semantics exactly (spec 003:3).
+ * The GD driver must match the daemon's pixel semantics exactly — the two
+ * implementations are the graceful-degradation contract.
  */
 interface Driver
 {
