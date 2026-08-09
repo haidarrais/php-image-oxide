@@ -6,6 +6,7 @@ namespace ImageOxide;
 
 use ImageOxide\Driver\Capabilities;
 use ImageOxide\Driver\DaemonDriver;
+use ImageOxide\Driver\DaemonManager;
 use ImageOxide\Driver\Driver;
 use ImageOxide\Driver\GdDriver;
 use ImageOxide\Exception\OxideException;
@@ -162,7 +163,9 @@ final class Oxide
             return $this->driver;
         }
         $socket = $this->socketPath ?? \ImageOxide\Transport\Connection::defaultSocketPath();
-        if (DaemonDriver::isReachable($socket)) {
+        // PHP-05 reachability first; when the socket is absent, try a
+        // zero-setup lazy spawn (bundled/PATH binary) before falling back.
+        if (DaemonDriver::isReachable($socket) || DaemonManager::ensureRunning($socket)) {
             $this->driver = new DaemonDriver($socket);
             return $this->driver;
         }

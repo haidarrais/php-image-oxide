@@ -11,7 +11,7 @@ the daemon is not reachable.
 
 - PHP >= 8.2
 - Extensions: `gd`, `json`, `sockets`
-- Optional: the image-oxide daemon binary (for the faster, richer driver)
+- Optional: the image-oxide daemon binary (for the faster, richer driver) — see [Zero setup](#zero-setup); none needed if GD is fine
 
 ## Install
 
@@ -24,10 +24,30 @@ composer require haidarrais/image-oxide
 The fluent API accumulates ops and executes them once, on the terminal call, so one chain can
 be reused across many images.
 
+## Zero setup
+
+You don't need to start the daemon yourself. On first use, if the socket is
+missing, the client lazily spawns the daemon from the first binary it finds:
+
+1. `IMAGE_OXIDE_DAEMON` env var (absolute path)
+2. `vendor/bin/image-oxide` in the consuming project
+3. `bin/{os}-{arch}/image-oxide` bundled inside this package
+4. `~/.image-oxide/bin/image-oxide`
+5. `image-oxide` on `$PATH`
+
+The daemon idles out on its own (60s default via `IMAGE_OXIDE_TTL_MS`), so a
+spawned instance costs nothing once traffic stops. If no binary is found — or
+the spawn/handshake fails — the client silently falls back to the GD driver.
+Set `IMAGE_OXIDE_DAEMON` to pin an exact binary:
+
+```bash
+IMAGE_OXIDE_DAEMON=/opt/image-oxide/bin/image-oxide php artisan queue:work
+```
+
 ```php
 use ImageOxide\Oxide;
 
-// Daemon when the socket is reachable, else GD (default socket path)
+// Daemon auto-spawned on first use (bundled binary or PATH); GD fallback otherwise
 Oxide::from('/path/to/in.png')
     ->resize(800, 600, 'cover')
     ->format('webp')
